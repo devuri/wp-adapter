@@ -6,7 +6,7 @@ namespace AdapterKit\Core\Storage;
 
 use AdapterKit\Core\Contracts\OptionStorageInterface;
 
-class WordPressOptionStorage implements OptionStorageInterface
+final class WordPressOptionStorage implements OptionStorageInterface
 {
     /**
      * @param mixed $default

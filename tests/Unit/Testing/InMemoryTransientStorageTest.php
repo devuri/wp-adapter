@@ -66,6 +66,15 @@ final class InMemoryTransientStorageTest extends TestCase
         $this->assertTrue($transients->delete('key'));
     }
 
+    public function test_expiration_zero_means_no_expiry(): void
+    {
+        $clock      = new FrozenClock(1700000000);
+        $transients = new InMemoryTransientStorage($clock);
+        $transients->set('key', 'persistent', 0);
+        $clock->advance(999999);
+        $this->assertSame('persistent', $transients->get('key'));
+    }
+
     public function test_clock_and_storage_share_the_same_time_source(): void
     {
         $clock      = new FrozenClock(1700000000);

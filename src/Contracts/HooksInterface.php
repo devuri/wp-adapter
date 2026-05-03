@@ -11,14 +11,14 @@ interface HooksInterface
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool;
+    ): void;
 
     public function addFilter(
         string $tag,
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool;
+    ): void;
 
     public function registerRestRoute(
         string $namespace,

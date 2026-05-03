@@ -6,7 +6,7 @@ namespace AdapterKit\Core\Environment;
 
 use AdapterKit\Core\Contracts\EnvironmentInterface;
 
-class WordPressEnvironment implements EnvironmentInterface
+final class WordPressEnvironment implements EnvironmentInterface
 {
     public function homeUrl(string $path = ''): string
     {
@@ -58,6 +58,9 @@ class WordPressEnvironment implements EnvironmentInterface
 
     public function getCurrentScreenId(): ?string
     {
+        if (!function_exists('get_current_screen')) {
+            return null;
+        }
         $screen = get_current_screen();
         return $screen ? $screen->id : null;
     }

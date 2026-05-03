@@ -38,6 +38,9 @@ final class MockEnvironment implements EnvironmentInterface
         if ($type === 'timestamp' || $type === 'U') {
             return $this->timestamp;
         }
+        if ($type === 'mysql') {
+            return date('Y-m-d H:i:s', $this->timestamp);
+        }
         return date($type, $this->timestamp);
     }
 

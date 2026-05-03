@@ -6,15 +6,15 @@ namespace AdapterKit\Core\Hooks;
 
 use AdapterKit\Core\Contracts\HooksInterface;
 
-class WordPressHooks implements HooksInterface
+final class WordPressHooks implements HooksInterface
 {
     public function addAction(
         string $tag,
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool {
-        return (bool) add_action($tag, $callback, $priority, $args);
+    ): void {
+        add_action($tag, $callback, $priority, $args);
     }
 
     public function addFilter(
@@ -22,8 +22,8 @@ class WordPressHooks implements HooksInterface
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool {
-        return (bool) add_filter($tag, $callback, $priority, $args);
+    ): void {
+        add_filter($tag, $callback, $priority, $args);
     }
 
     public function registerRestRoute(

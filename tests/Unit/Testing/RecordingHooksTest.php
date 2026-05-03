@@ -58,22 +58,6 @@ final class RecordingHooksTest extends TestCase
         $this->assertCount(2, $hooks->getActions());
     }
 
-    public function test_add_action_returns_true(): void
-    {
-        $hooks = new RecordingHooks();
-        $result = $hooks->addAction('init', static function (): void {});
-        $this->assertTrue($result);
-    }
-
-    public function test_add_filter_returns_true(): void
-    {
-        $hooks = new RecordingHooks();
-        $result = $hooks->addFilter('the_content', static function (string $c): string {
-            return $c;
-        });
-        $this->assertTrue($result);
-    }
-
     public function test_clear_removes_all_recorded_hooks(): void
     {
         $hooks = new RecordingHooks();

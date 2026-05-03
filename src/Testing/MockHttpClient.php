@@ -19,11 +19,12 @@ final class MockHttpClient implements HttpClientInterface
      */
     public function addJsonResponse(string $urlFragment, array $body, int $code = 200): void
     {
+        $json = json_encode($body);
         $this->responses[$urlFragment] = [
             'is_error'      => false,
             'error_message' => null,
             'code'          => $code,
-            'body'          => (string) json_encode($body),
+            'body'          => false === $json ? '' : $json,
         ];
     }
 

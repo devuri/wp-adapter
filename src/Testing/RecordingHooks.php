@@ -22,14 +22,13 @@ final class RecordingHooks implements HooksInterface
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool {
+    ): void {
         $this->actions[] = [
             'tag'      => $tag,
             'callback' => $callback,
             'priority' => $priority,
             'args'     => $args,
         ];
-        return true;
     }
 
     public function addFilter(
@@ -37,14 +36,13 @@ final class RecordingHooks implements HooksInterface
         callable $callback,
         int $priority = 10,
         int $args = 1
-    ): bool {
+    ): void {
         $this->filters[] = [
             'tag'      => $tag,
             'callback' => $callback,
             'priority' => $priority,
             'args'     => $args,
         ];
-        return true;
     }
 
     public function registerRestRoute(
