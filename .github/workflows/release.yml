@@ -26,6 +26,6 @@ jobs:
         if: ${{ steps.release.outputs.releases_created }}
         uses: AButler/upload-release-assets@v2.0
         with:
-          files: 'zipit;CHANGELOG.md;LICENSE'
+          files: 'CHANGELOG.md;LICENSE'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           release-tag: ${{ steps.release.outputs.tag_name }}
