@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/devuri/wp-adapter/compare/v0.1.2...v0.2.0) (2026-05-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* Implement WP Adapter v0.1 foundation classes
+
+### Features
+
+* Implement WP Adapter v0.1 foundation classes ([cfa3797](https://github.com/devuri/wp-adapter/commit/cfa3797ccb1d54fe7cceb2c73153b0ba5f10ca62))
+
 ## [0.1.2](https://github.com/devuri/wp-adapter/compare/v0.1.1...v0.1.2) (2026-05-03)
 
 
