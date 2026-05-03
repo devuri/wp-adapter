@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/devuri/wp-adapter/compare/v0.2.1...v0.2.2) (2026-05-03)
+
+
+### Bug Fixes
+
+* add indexes Update index.php ([e36af4a](https://github.com/devuri/wp-adapter/commit/e36af4a7bffcf95341a085b618db16a415b70593))
+* add indexes Update index.php ([fc71d53](https://github.com/devuri/wp-adapter/commit/fc71d5345512a9bb2942267c913f2bd8a59398c7))
+
 ## [0.2.1](https://github.com/devuri/wp-adapter/compare/v0.2.0...v0.2.1) (2026-05-03)
 
 
