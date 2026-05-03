@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/devuri/wp-adapter/compare/v0.2.0...v0.2.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* better updated wp-adapter-copy ([a0d8141](https://github.com/devuri/wp-adapter/commit/a0d8141ad61d508e69d4f40d586322b300aab236))
+* better updated wp-adapter-copy ([c8aa2ad](https://github.com/devuri/wp-adapter/commit/c8aa2ad8b02709342000d5ad287c3c4a84f90e9b))
+
 ## [0.2.0](https://github.com/devuri/wp-adapter/compare/v0.1.2...v0.2.0) (2026-05-03)
 
 
