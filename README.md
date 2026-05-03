@@ -408,4 +408,4 @@ The package is deliberately PHP 7.4 compatible throughout. `mixed` type hints, c
 
 MIT — see [LICENSE](LICENSE).
 
-Maintained by [Premium7 / Devuri](https://github.com/devuri).
+Maintained by [URI](https://github.com/devuri).
