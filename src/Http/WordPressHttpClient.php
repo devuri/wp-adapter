@@ -6,7 +6,7 @@ namespace AdapterKit\Core\Http;
 
 use AdapterKit\Core\Contracts\HttpClientInterface;
 
-class WordPressHttpClient implements HttpClientInterface
+final class WordPressHttpClient implements HttpClientInterface
 {
     /**
      * @param array<string, mixed> $args

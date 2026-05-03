@@ -7,7 +7,7 @@ namespace AdapterKit\Core\Logging;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LogLevel;
 
-class WordPressDebugLogger extends AbstractLogger
+final class WordPressDebugLogger extends AbstractLogger
 {
     private string $minimumLevel;
 
@@ -38,10 +38,10 @@ class WordPressDebugLogger extends AbstractLogger
             return;
         }
 
-        $levelInt   = self::$levels[(string) $level] ?? 0;
-        $minimumInt = self::$levels[$this->minimumLevel] ?? 0;
+        $levelKey   = isset(self::$levels[(string) $level]) ? (string) $level : LogLevel::DEBUG;
+        $minimumKey = isset(self::$levels[$this->minimumLevel]) ? $this->minimumLevel : LogLevel::DEBUG;
 
-        if ($levelInt < $minimumInt) {
+        if (self::$levels[$levelKey] < self::$levels[$minimumKey]) {
             return;
         }
 

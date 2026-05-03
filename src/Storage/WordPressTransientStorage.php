@@ -6,7 +6,7 @@ namespace AdapterKit\Core\Storage;
 
 use AdapterKit\Core\Contracts\TransientStorageInterface;
 
-class WordPressTransientStorage implements TransientStorageInterface
+final class WordPressTransientStorage implements TransientStorageInterface
 {
     /**
      * @return mixed

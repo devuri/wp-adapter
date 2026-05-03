@@ -30,7 +30,7 @@ final class InMemoryTransientStorage implements TransientStorageInterface
 
         $entry = $this->store[$key];
 
-        if ($this->clock->now() >= $entry['expires_at']) {
+        if ($entry['expires_at'] > 0 && $this->clock->now() >= $entry['expires_at']) {
             unset($this->store[$key]);
             return false;
         }
@@ -45,7 +45,7 @@ final class InMemoryTransientStorage implements TransientStorageInterface
     {
         $this->store[$key] = [
             'value'      => $value,
-            'expires_at' => $this->clock->now() + $expiration,
+            'expires_at' => $expiration > 0 ? $this->clock->now() + $expiration : 0,
         ];
         return true;
     }
