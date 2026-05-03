@@ -1,4 +1,4 @@
-# WP Adapter — Complete Technical Reference
+# WP Adapter - Complete Technical Reference
 
 **Package:** `devuri/wp-adapter`  
 **Root namespace:** `AdapterKit\Core`  
@@ -16,11 +16,15 @@ file needs to be consulted to generate correct code using this package.
 
 WordPress function calls (`get_option`, `update_option`, `add_action`,
 `add_filter`, `wp_remote_post`, `wp_remote_get`, `get_current_screen`, etc.)
-belong **only** inside the five WordPress adapter classes listed in the
-"WordPress Adapters" section. Every other class in a consuming plugin must
-receive its dependencies through constructor parameters typed against the
-contract interfaces, never against the concrete adapter classes or WordPress
-directly.
+belong only in:
+
+1. WP Adapter production adapter classes (`WordPressHooks`, `WordPressOptionStorage`, `WordPressTransientStorage`, `WordPressEnvironment`, `WordPressHttpClient`).
+2. Plugin bootstrap code (`plugin.php` or equivalent top-level file).
+3. Explicit hook, REST, and admin boundary methods in the consuming plugin (thin methods that call one WordPress API then delegate to services).
+4. `PluginContext::fromPluginFile()`, which is the only approved WP Adapter non-adapter exception.
+
+Service classes, domain logic, repositories, validators, calculators, and
+business workflows must not call WordPress directly.
 
 A service class is correct when it can be instantiated in a plain PHP file with
 no WordPress loaded. A service class is wrong when its constructor or any of its
@@ -74,9 +78,11 @@ require_once __DIR__ . '/lib/wp-adapter/init.php';
 - `AdapterKit\Core\` → `<init-dir>/src/`
 - `Psr\Log\` → `<init-dir>/psr-log/`
 
-The `psr-log/` directory contains the psr/log v1.1.x source files copied flat
-from `vendor/psr/log/Psr/Log/` by the `wp-adapter-copy` binary. Do not wrap
-the `require_once` in a `class_exists` guard.
+The `psr-log/` directory must contain `LoggerInterface.php`, `AbstractLogger.php`,
+`NullLogger.php`, `LogLevel.php`, and the other PSR-3 files placed flat (no
+subdirectory) by the `wp-adapter-copy` binary. The copy source in psr/log v1.1.x
+is `vendor/psr/log/Psr/Log/`. Do not wrap the `require_once` in a `class_exists`
+guard.
 
 ### Build-time copy binary
 ```bash
@@ -126,7 +132,7 @@ interface HooksInterface
 }
 ```
 
-`addAction` and `addFilter` return `void` — there is no meaningful success
+`addAction` and `addFilter` return `void` - there is no meaningful success
 signal from hook registration. `registerRestRoute` returns `bool` matching
 WordPress's `register_rest_route` return value.
 
@@ -156,7 +162,9 @@ interface OptionStorageInterface
 
 `get` returns the stored value or `$default` (default `false`) when the key
 does not exist. `update` always returns `true` in the testing adapter. `delete`
-always returns `true`.
+always returns `true`. Do not treat a `false` return from
+`WordPressOptionStorage::update()` as always meaning failure; WordPress returns
+`false` when the stored value did not change, not only on error.
 
 ---
 
@@ -287,6 +295,10 @@ use Psr\Log\LoggerInterface;
 PSR-3 log levels (string constants on `Psr\Log\LogLevel`):
 `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, `emergency`.
 
+Use `Psr\Log\LoggerInterface` for all service constructor type hints. Use
+`AdapterKit\Core\Logging\NullLogger` or `WordPressDebugLogger` only at the
+plugin bootstrap/wiring edge.
+
 ---
 
 ## WordPress adapters (production)
@@ -302,7 +314,7 @@ All five classes are `final`. Pass these to plugin constructors in production
 | `WordPressEnvironment` | `EnvironmentInterface` | `AdapterKit\Core\Environment` |
 | `WordPressHttpClient` | `HttpClientInterface` | `AdapterKit\Core\Http` |
 
-All five have a zero-argument constructor:
+In v0.1, all five have a zero-argument constructor:
 ```php
 new WordPressHooks()
 new WordPressOptionStorage()
@@ -361,7 +373,7 @@ final class InMemoryTransientStorage implements TransientStorageInterface
 }
 ```
 
-`$expiration = 0` stores the entry with no expiry — `get` will never expire it
+`$expiration = 0` stores the entry with no expiry - `get` will never expire it
 regardless of how much the clock advances. Any positive `$expiration` is stored
 as `now() + $expiration`; `get` returns `false` when `now() >= expires_at`.
 The same `ClockInterface` instance must be shared with `FrozenClock` in tests
@@ -396,10 +408,10 @@ final class MockHttpClient implements HttpClientInterface
 }
 ```
 
-URL matching is done with `strpos($url, $urlFragment) !== false` — a partial
-match. Register responses before the code under test executes. If no response
-is registered for a URL, `get`/`post` return an error response with message
-`"No mock response registered for: <url>"`.
+URL matching is done with `strpos($url, $urlFragment) !== false` - a partial
+match. Responses are checked in insertion order. Register responses before the
+code under test executes. If no response is registered for a URL, `get`/`post`
+return an error response with message `"No mock response registered for: <url>"`.
 
 `getLastRequest()` returns `['method' => string, 'url' => string, 'args' => array]`
 or `null`. `getRequestHistory()` returns an array of the same shape.
@@ -434,7 +446,8 @@ final class RecordingHooks implements HooksInterface
 ```
 
 `hasRestRoute` matches against the `$route` parameter (the second argument to
-`registerRestRoute`), not the namespace.
+`registerRestRoute`), not the namespace. If two routes share the same path under
+different namespaces, use `getRestRoutes()` for precise assertions.
 
 ---
 
@@ -463,7 +476,7 @@ final class RecordingLogger extends AbstractLogger  // Psr\Log\AbstractLogger
 }
 ```
 
-The `has*` methods match using `strpos($entry['message'], $message) !== false` —
+The `has*` methods match using `strpos($entry['message'], $message) !== false` -
 they return `true` if the logged message **contains** the given string, not only
 if it matches exactly. Entries are stored as
 `['level' => string, 'message' => string, 'context' => array]`.
@@ -829,8 +842,8 @@ final class Plugin
 
     public function registerAdminMenu(): void
     {
-        // WordPress functions like add_menu_page() are acceptable here because
-        // this method itself is the adapter boundary for the admin_menu hook.
+        // Thin WordPress boundary method only. It may call add_menu_page(),
+        // then delegate real behavior to services. Do not put business logic here.
     }
 }
 ```
@@ -995,7 +1008,7 @@ public function activate(string $key): Result
 
 **Concrete adapter in a service constructor:**
 ```php
-// Wrong — ties the service to WordPress even in tests
+// Wrong - ties the service to WordPress even in tests
 public function __construct(WordPressOptionStorage $options) {}
 
 // Correct
@@ -1004,7 +1017,7 @@ public function __construct(OptionStorageInterface $options) {}
 
 **`class_exists` guard on init.php:**
 ```php
-// Wrong — silently accepts a different (possibly incompatible) version
+// Wrong - silently accepts a different (possibly incompatible) version
 if (! class_exists(\AdapterKit\Core\Result::class)) {
     require_once __DIR__ . '/lib/wp-adapter/init.php';
 }
@@ -1012,7 +1025,7 @@ if (! class_exists(\AdapterKit\Core\Result::class)) {
 
 **Extending a concrete adapter:**
 ```php
-// Wrong — all concrete adapters are final
+// Wrong - all concrete adapters are final
 class MyStorage extends WordPressOptionStorage {}
 ```
 
@@ -1024,13 +1037,13 @@ public function process(mixed $value): mixed {}
 
 **Extending `WP_UnitTestCase` in a unit test:**
 ```php
-// Wrong — unit tests must not load WordPress
+// Wrong - unit tests must not load WordPress
 final class MyServiceTest extends WP_UnitTestCase {}
 ```
 
 **Registering responses after the code runs:**
 ```php
-// Wrong — responses must be registered before the call
+// Wrong - responses must be registered before the call
 $service->activate('KEY');
 $http->addJsonResponse('/activate', ['ok' => true]);
 ```
