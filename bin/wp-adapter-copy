@@ -1,6 +1,5 @@
 #!/usr/bin/env php
 <?php
-
 /**
  * wp-adapter-copy
  *
@@ -14,8 +13,136 @@
  *
  * Target is always ./lib/wp-adapter/ relative to getcwd() (plugin root).
  */
-
 declare(strict_types=1);
+
+// ── Terminal colours ──────────────────────────────────────────────────────────
+
+final class Ansi
+{
+    private static bool $enabled = true;
+
+    public static function disable(): void { self::$enabled = false; }
+
+    private static function wrap(string $text, string $code): string
+    {
+        return self::$enabled ? "\033[{$code}m{$text}\033[0m" : $text;
+    }
+
+    // Styles
+    public static function bold(string $t): string   { return self::wrap($t, '1'); }
+    public static function dim(string $t): string    { return self::wrap($t, '2'); }
+    public static function italic(string $t): string { return self::wrap($t, '3'); }
+
+    // Colours
+    public static function white(string $t): string   { return self::wrap($t, '97'); }
+    public static function cyan(string $t): string    { return self::wrap($t, '96'); }
+    public static function green(string $t): string   { return self::wrap($t, '92'); }
+    public static function yellow(string $t): string  { return self::wrap($t, '93'); }
+    public static function red(string $t): string     { return self::wrap($t, '91'); }
+    public static function blue(string $t): string    { return self::wrap($t, '94'); }
+    public static function magenta(string $t): string { return self::wrap($t, '95'); }
+    public static function gray(string $t): string    { return self::wrap($t, '90'); }
+
+    // Semantic helpers
+    public static function label(string $t): string   { return self::bold(self::cyan($t)); }
+    public static function ok(string $t): string      { return self::bold(self::green($t)); }
+    public static function warn(string $t): string    { return self::bold(self::yellow($t)); }
+    public static function err(string $t): string     { return self::bold(self::red($t)); }
+    public static function muted(string $t): string   { return self::gray(self::dim($t)); }
+    public static function value(string $t): string   { return self::white($t); }
+}
+
+// ── Output helpers ────────────────────────────────────────────────────────────
+
+function line(string $text = ''): void  { echo $text . PHP_EOL; }
+function blank(): void                  { echo PHP_EOL; }
+
+function info(string $key, string $val): void
+{
+    printf("  %s  %s\n", Ansi::muted(str_pad($key . ':', 10)), Ansi::value($val));
+}
+
+function step(string $symbol, string $message, string $detail = ''): void
+{
+    $detail = $detail !== '' ? '  ' . Ansi::muted($detail) : '';
+    printf("  %s  %s%s\n", $symbol, $message, $detail);
+}
+
+function warn(string $message, string $hint = ''): void
+{
+    line('  ' . Ansi::warn('⚠  WARNING') . '  ' . $message);
+    if ($hint !== '') {
+        line('  ' . Ansi::muted('   ' . $hint));
+    }
+}
+
+function abort(string $message, int $code = 1): never
+{
+    blank();
+    line('  ' . Ansi::err('✖  ERROR') . '  ' . $message);
+    blank();
+    exit($code);
+}
+
+// ── Core ──────────────────────────────────────────────────────────────────────
+
+/**
+ * @param  list<string>  $exclude  Top-level names to skip.
+ * @return array{files: int, dirs: int, bytes: int}
+ */
+function copyDirectory(string $source, string $target, array $exclude): array
+{
+    if (!is_dir($target) && !mkdir($target, 0755, true) && !is_dir($target)) {
+        abort("Could not create directory: {$target}");
+    }
+
+    $stats    = ['files' => 0, 'dirs' => 0, 'bytes' => 0];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST,
+    );
+
+    foreach ($iterator as $item) {
+        $relative = substr($item->getPathname(), strlen($source) + 1);
+        $topLevel = explode(DIRECTORY_SEPARATOR, $relative)[0];
+
+        if (in_array($topLevel, $exclude, true)) {
+            continue;
+        }
+
+        $dest = $target . DIRECTORY_SEPARATOR . $relative;
+
+        if ($item->isDir()) {
+            if (!is_dir($dest) && !mkdir($dest, 0755, true) && !is_dir($dest)) {
+                abort("Could not create directory: {$dest}");
+            }
+            $stats['dirs']++;
+        } else {
+            if (!copy($item->getPathname(), $dest)) {
+                abort("Could not copy file: {$item->getPathname()}");
+            }
+            $stats['files']++;
+            $stats['bytes'] += $item->getSize();
+        }
+    }
+
+    return $stats;
+}
+
+function formatBytes(int $bytes): string
+{
+    if ($bytes < 1024)       { return "{$bytes} B"; }
+    if ($bytes < 1_048_576)  { return round($bytes / 1024, 1) . ' KB'; }
+    return round($bytes / 1_048_576, 2) . ' MB';
+}
+
+// ── Disable colour when not in a TTY or when --no-color is passed ─────────────
+
+if (!stream_isatty(STDOUT) || in_array('--no-color', $argv ?? [], true)) {
+    Ansi::disable();
+}
+
+// ── Configuration ─────────────────────────────────────────────────────────────
 
 $packageRoot = dirname(__DIR__);
 $pluginRoot  = getcwd();
@@ -36,61 +163,73 @@ $exclude = [
     'docs',
 ];
 
-echo "wp-adapter-copy\n";
-echo "  Source: {$packageRoot}\n";
-echo "  Target: {$target}\n\n";
-
-// Copy psr/log ^1.1 source (PHP 7.4-safe) into psr-log/.
-// psr/log v1.1.x keeps its files under Psr/Log/ (no src/ subdirectory).
+// psr/log v1.1.x ships its files under Psr/Log/ (no src/ subdirectory).
 $psrLogSource = $pluginRoot . '/vendor/psr/log/Psr/Log';
-$psrLogTarget = $target . '/psr-log';
 
 if (!is_dir($psrLogSource)) {
-    // Fallback: look relative to the package's own vendor entry.
-    // Works for normal (non-symlinked) Composer installs where
-    // dirname($packageRoot, 2) resolves to the consuming plugin's vendor/.
+    // Fallback for non-symlinked Composer installs.
     $psrLogSource = dirname($packageRoot, 2) . '/psr/log/Psr/Log';
 }
 
-copyDirectory($packageRoot, $target, $exclude);
+$psrLogTarget = $target . '/psr-log';
+
+// ── Header ────────────────────────────────────────────────────────────────────
+
+blank();
+line(Ansi::bold(Ansi::cyan(' wp-adapter-copy ')));
+line(Ansi::muted(' ─────────────────────────────────────────'));
+info('source', $packageRoot);
+info('target', $target);
+blank();
+
+// ── Sanity checks ─────────────────────────────────────────────────────────────
+
+if (!is_dir($packageRoot)) {
+    abort("Package root not found: {$packageRoot}");
+}
+
+// ── Main copy ─────────────────────────────────────────────────────────────────
+
+$start = microtime(true);
+
+step(Ansi::cyan('→'), 'Copying wp-adapter source …');
+$mainStats = copyDirectory($packageRoot, $target, $exclude);
+step(
+    Ansi::ok('✔'),
+    Ansi::green('wp-adapter copied'),
+    sprintf('%d files, %d dirs, %s', $mainStats['files'], $mainStats['dirs'], formatBytes($mainStats['bytes'])),
+);
+
+blank();
+
+// ── psr/log copy ──────────────────────────────────────────────────────────────
 
 if (is_dir($psrLogSource)) {
-    copyDirectory($psrLogSource, $psrLogTarget, []);
-    echo "  Copied psr/log source -> psr-log/\n";
-} else {
-    echo "  WARNING: psr/log source not found at {$psrLogSource}\n";
-    echo "           Run composer install before wp-adapter-copy.\n";
-}
-
-echo "\nDone. lib/wp-adapter/ is ready.\n";
-
-function copyDirectory(string $source, string $target, array $exclude): void
-{
-    if (!is_dir($target)) {
-        mkdir($target, 0755, true);
-    }
-
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::SELF_FIRST
+    step(Ansi::cyan('→'), 'Copying psr/log source …');
+    $psrStats = copyDirectory($psrLogSource, $psrLogTarget, []);
+    step(
+        Ansi::ok('✔'),
+        Ansi::green('psr/log copied'),
+        sprintf('%d files, %s → psr-log/', $psrStats['files'], formatBytes($psrStats['bytes'])),
     );
-
-    foreach ($iterator as $item) {
-        $relative = substr($item->getPathname(), strlen($source) + 1);
-        $topLevel = explode(DIRECTORY_SEPARATOR, $relative)[0];
-
-        if (in_array($topLevel, $exclude, true)) {
-            continue;
-        }
-
-        $dest = $target . DIRECTORY_SEPARATOR . $relative;
-
-        if ($item->isDir()) {
-            if (!is_dir($dest)) {
-                mkdir($dest, 0755, true);
-            }
-        } else {
-            copy($item->getPathname(), $dest);
-        }
-    }
+} else {
+    warn(
+        'psr/log source not found.',
+        'Run composer install before wp-adapter-copy.',
+    );
 }
+
+// ── Footer ────────────────────────────────────────────────────────────────────
+
+$elapsed = round((microtime(true) - $start) * 1000);
+
+blank();
+line(Ansi::muted(' ─────────────────────────────────────────'));
+line(
+    sprintf(
+        '  %s  %s',
+        Ansi::ok('✔  Done'),
+        Ansi::muted("lib/wp-adapter/ is ready  ({$elapsed}ms)"),
+    ),
+);
+blank();
