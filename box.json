@@ -1,0 +1,9 @@
+{
+  "output": "bin/zipit",
+  "main": "src/inc/bin/zipit",
+  "directories": ["src", "vendor"],
+  "compression": "GZ",
+  "exclude-dev-files": true,
+  "banner": false,
+  "chmod": "0755"
+}

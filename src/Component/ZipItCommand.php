@@ -1,0 +1,243 @@
+<?php
+
+/*
+ * This file is part of the WPframework package.
+ *
+ * The full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace Urisoft;
+
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Filesystem\Filesystem;
+use ZipArchive;
+
+class ZipItCommand extends Command
+{
+    use OutputTrait;
+
+    protected static $defaultName = 'zipit';
+
+    protected function configure(): void
+    {
+        $this
+            ->setDescription('Creates a zip file based on the configuration in .zipit-conf.php')
+            ->addArgument('config', InputArgument::OPTIONAL, 'Path to the configuration file (must be .zipit-conf.php)', null);
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $io = new SymfonyStyle($input, $output);
+
+        $configFilePath = $input->getArgument('config');
+        $outputTime = (string) time();
+
+        if ( ! $configFilePath) {
+            $configFilePath = getcwd() . '/.zipit-conf.php';
+        }
+
+        if ('.zipit-conf.php' !== basename($configFilePath)) {
+            $io->error("The configuration file must be named .zipit-conf.php.");
+
+            return Command::FAILURE;
+        }
+
+        if ( ! file_exists($configFilePath)) {
+            $io->error("Configuration file .zipit-conf.php not found at $configFilePath.");
+
+            return Command::FAILURE;
+        }
+
+        $getConfig = require $configFilePath;
+
+        if ( ! \is_array($getConfig) || ! isset($getConfig['files'], $getConfig['baseDir']) || ! \is_array($getConfig['files'])) {
+            $io->error("Invalid configuration file. The .zipit-conf.php file must return an array with 'baseDir' and 'files' keys.");
+
+            return Command::FAILURE;
+        }
+
+        $config = $this->setOutputConfig($outputTime, $getConfig);
+
+        $baseDir = realpath($config['baseDir']);
+
+        // Bug fix: filter out false values from realpath() calls on non-existent exclude paths.
+        $excludes = array_values(array_filter(
+            array_map(
+                'realpath',
+                array_map(fn ($file) => $baseDir . DIRECTORY_SEPARATOR . $file, $config['exclude'])
+            )
+        ));
+
+        $files      = $config['files'];
+        $filesystem = new Filesystem();
+
+        $outputDirectory = $config['outputDir'];
+        $outputFileName  = $config['outputFile'];
+        $outputZipBuild  = $outputDirectory . DIRECTORY_SEPARATOR . $outputFileName;
+
+        if ('zip' !== pathinfo($outputZipBuild, PATHINFO_EXTENSION)) {
+            $io->error("The output file name must have a .zip extension.");
+
+            return Command::FAILURE;
+        }
+
+        $resolvedZipPath = realpath($outputZipBuild);
+        if ( ! $filesystem->exists($resolvedZipPath)) {
+            $io->warning("File or directory does not exist.");
+            $filesystem->mkdir($outputDirectory);
+        }
+
+        if (file_exists($outputZipBuild)) {
+            $filesystem->remove($outputZipBuild);
+        }
+
+        $zip = new ZipArchive();
+        if (true !== $zip->open($outputZipBuild, ZipArchive::CREATE)) {
+            $io->error("Failed to create zip file.");
+
+            return Command::FAILURE;
+        }
+
+        $io->title("Creating Zip Archive");
+        $io->writeln('<info>Starting to zip the configured files...</info>');
+
+        $progressBar = new ProgressBar($output, \count($files));
+        $progressBar->start();
+
+        $filesAdded   = [];
+        $missingFiles = [];
+        $totalSize    = 0;
+
+        // Supports two entry formats:
+        //   'path/to/file.php'                  — plain string, destination mirrors source path
+        //   'path/to/source.php' => 'dest.php'  — key=>value, destination is remapped inside the zip
+        foreach ($files as $source => $dest) {
+            if (\is_int($source)) {
+                // Plain string entry: source and destination path are the same.
+                $source       = $dest;
+                $destOverride = null;
+            } else {
+                // Mapped entry: $source is the file to read, $dest is where it lands in the zip.
+                $destOverride = $dest;
+            }
+
+            // Bug fix: check file_exists() before realpath() so missing files are tracked
+            // and the command returns FAILURE rather than silently succeeding.
+            $rawPath  = $baseDir . DIRECTORY_SEPARATOR . $source;
+            $filePath = file_exists($rawPath) ? realpath($rawPath) : false;
+
+            if (false === $filePath || ! $filesystem->exists($filePath)) {
+                $io->warning("File or directory '$source' does not exist and will be skipped.");
+                $missingFiles[] = $source;
+                $progressBar->advance();
+
+                continue;
+            }
+
+            if ($this->isExcluded($filePath, $excludes)) {
+                $io->note("Skipping excluded file or directory: '$source'");
+                $progressBar->advance();
+
+                continue;
+            }
+
+            $this->addFileToZip($zip, $filePath, $baseDir, $excludes, $destOverride);
+            $filesAdded[] = $destOverride ? "$source -> $destOverride" : $filePath;
+
+            // Bug fix: only call filesize() on actual files, not directories.
+            if (is_file($filePath)) {
+                $totalSize += filesize($filePath);
+            }
+
+            $progressBar->advance();
+        }
+
+        $progressBar->finish();
+        $io->newLine();
+
+        $zip->close();
+
+        if ( ! file_exists($outputZipBuild) || 0 === \count($filesAdded)) {
+            $io->error("Failed to create a valid zip file. No files were added to the archive.");
+
+            return Command::FAILURE;
+        }
+
+        $io->success("Zip file created successfully.");
+        $io->section("Summary");
+        $io->listing($filesAdded);
+
+        $io->text([
+            "<info>Total files:</info> " . \count($filesAdded),
+            "<info>Total size:</info> " . $this->formatSize($totalSize),
+            "<info>Zip file location:</info> " . realpath($outputZipBuild),
+        ]);
+
+        // Bug fix (cont.): surface missing files and fail if any were not found.
+        if ( ! empty($missingFiles)) {
+            $io->warning("The following configured entries were not found and were skipped:");
+            $io->listing($missingFiles);
+
+            return Command::FAILURE;
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function isExcluded(string $filePath, array $excludes): bool
+    {
+        foreach ($excludes as $exclude) {
+            if (0 === strpos($filePath, $exclude)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Adds a file or directory to the zip archive.
+     *
+     * @param string|null $destOverride When set, the file is stored under this path inside the
+     *                                  zip instead of its path relative to $basePath. Only applies
+     *                                  to single files; directories always use their relative path.
+     */
+    private function addFileToZip(ZipArchive $zip, string $filePath, string $basePath, array $excludes, ?string $destOverride = null): void
+    {
+        if (is_dir($filePath)) {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($filePath, RecursiveDirectoryIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $item) {
+                if ($this->isExcluded($item->getPathname(), $excludes)) {
+                    continue;
+                }
+                $relativePath = substr($item->getPathname(), \strlen($basePath) + 1);
+                $zip->addFile($item->getPathname(), $relativePath);
+            }
+        } else {
+            $relativePath = $destOverride ?? substr($filePath, \strlen($basePath) + 1);
+            $zip->addFile($filePath, $relativePath);
+        }
+    }
+
+    private function formatSize(int $size): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $unit = 0;
+        while ($size >= 1024 && $unit < \count($units) - 1) {
+            $size /= 1024;
+            $unit++;
+        }
+
+        return round($size, 2) . ' ' . $units[$unit];
+    }
+}
