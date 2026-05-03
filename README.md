@@ -6,9 +6,6 @@ WordPress adapter contracts and in-memory testing doubles for clean, testable pl
 composer require --dev devuri/wp-adapter
 ```
 
-**PHP 7.4+ · MIT · No WordPress at runtime**
-
----
 
 ## The problem this solves
 
@@ -43,7 +40,7 @@ final class LicenseService
 
 In production we pass the WordPress adapters. In tests we pass the in-memory fakes. No mocks. No bootstrapping WordPress.
 
----
+
 
 ## Our plugin must follow the boundary rule
 
@@ -55,7 +52,7 @@ If we call `get_option()` inside a service, that service requires WordPress to e
 
 See **[docs/testing-guide.md](docs/testing-guide.md)** for the full structure, a wrong-vs-right example, PHPUnit setup, and a checklist.
 
----
+
 
 ## Installation
 
@@ -79,7 +76,7 @@ require_once __DIR__ . '/lib/wp-adapter/init.php';
 
 Strip `vendor/` before distributing. `lib/` ships with the plugin. See [Direct-load distribution](#direct-load-distribution) for the full workflow.
 
----
+
 
 ## Wiring production adapters
 
@@ -107,7 +104,7 @@ $plugin = new MyPlugin\Plugin(
 $plugin->register();
 ```
 
----
+
 
 ## Unit testing without WordPress
 
@@ -208,7 +205,6 @@ WP_TESTS_DIR=/path/to/wordpress-tests-lib vendor/bin/phpunit --testsuite Integra
 
 See `examples/plugin-wiring/` for a complete, runnable example with service class, plugin class, and tests.
 
----
 
 ## Testing adapters
 
@@ -289,7 +285,6 @@ $env->setCurrentScreenId('settings_page_my-plugin');
 $env->sanitizeTextField(' hello world ');  // 'hello world'
 ```
 
----
 
 ## Contracts
 
@@ -306,7 +301,6 @@ Six interfaces in `AdapterKit\Core\Contracts\`. Our plugin code depends only on 
 
 `LoggerInterface` is `Psr\Log\LoggerInterface`. `NullLogger` and `WordPressDebugLogger` are the production implementations.
 
----
 
 ## Shared value types
 
@@ -343,7 +337,6 @@ $keys->transient('token');    // myplugin_token
 $keys->hook('activated');     // myplugin_/activated
 ```
 
----
 
 ## Direct-load distribution
 
@@ -380,7 +373,6 @@ require_once __DIR__ . '/lib/wp-adapter/init.php';
 
 Namespace-per-plugin scoping is deferred to a future build step.
 
----
 
 ## Requirements
 
@@ -392,7 +384,7 @@ Namespace-per-plugin scoping is deferred to a future build step.
 
 The package is deliberately PHP 7.4 compatible throughout. `mixed` type hints, constructor property promotion, union types, and all other PHP 8.0+ syntax are forbidden in `src/`.
 
----
+
 
 ## Further reading
 
@@ -402,10 +394,7 @@ The package is deliberately PHP 7.4 compatible throughout. `mixed` type hints, c
 - [docs/compatibility.md](docs/compatibility.md) — PHP version matrix, forbidden syntax, PSR-3 pin rationale
 - [examples/plugin-wiring/](examples/plugin-wiring/) — complete example with service, plugin class, and unit tests
 
----
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-Maintained by [URI](https://github.com/devuri).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
