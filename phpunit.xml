@@ -8,15 +8,20 @@
     convertNoticesToExceptions  = "true"
     convertWarningsToExceptions = "true"
     processIsolation            = "false"
+    defaultTestSuite            = "Unit"
     stopOnFailure               = "false">
-    <testsuites>
-        <testsuite name="Tests">
-            <directory>tests</directory>
+	<testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
         </testsuite>
     </testsuites>
-	<coverage>
+
+    <coverage>
         <include>
-            <directory>src</directory>
+            <directory suffix=".php">src</directory>
         </include>
     </coverage>
 </phpunit>

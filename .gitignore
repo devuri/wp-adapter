@@ -6,5 +6,6 @@ composer.lock
 /tmp
 /.github
 /.idea
+/.claude
 /.phpdoc/cache
 /tests/build

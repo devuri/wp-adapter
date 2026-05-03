@@ -1,0 +1,96 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * wp-adapter-copy
+ *
+ * Copies WP Adapter source into lib/wp-adapter/ inside the consuming
+ * plugin project. Run from the plugin project root with no arguments.
+ *
+ * Source resolution uses __DIR__ (real script path), NOT getcwd().
+ * Composer's vendor/bin proxy changes the working directory, making getcwd()
+ * unreliable for locating the package source. __DIR__ always points to the
+ * real bin/ directory inside vendor/devuri/wp-adapter/.
+ *
+ * Target is always ./lib/wp-adapter/ relative to getcwd() (plugin root).
+ */
+
+declare(strict_types=1);
+
+$packageRoot = dirname(__DIR__);
+$pluginRoot  = getcwd();
+$target      = $pluginRoot . '/lib/wp-adapter';
+
+$exclude = [
+    'tests',
+    'vendor',
+    '.git',
+    '.phpcs.xml',
+    'phpstan.neon',
+    'phpunit.xml.dist',
+    'phpunit.xml',
+    'composer.lock',
+    '.phpunit.result.cache',
+    'bin',
+    'examples',
+    'docs',
+];
+
+echo "wp-adapter-copy\n";
+echo "  Source: {$packageRoot}\n";
+echo "  Target: {$target}\n\n";
+
+// Copy psr/log ^1.1 source (PHP 7.4-safe) into psr-log/.
+// psr/log v1.1.x keeps its files under Psr/Log/ (no src/ subdirectory).
+$psrLogSource = $pluginRoot . '/vendor/psr/log/Psr/Log';
+$psrLogTarget = $target . '/psr-log';
+
+if (!is_dir($psrLogSource)) {
+    // Fallback: look relative to the package's own vendor entry.
+    // Works for normal (non-symlinked) Composer installs where
+    // dirname($packageRoot, 2) resolves to the consuming plugin's vendor/.
+    $psrLogSource = dirname($packageRoot, 2) . '/psr/log/Psr/Log';
+}
+
+copyDirectory($packageRoot, $target, $exclude);
+
+if (is_dir($psrLogSource)) {
+    copyDirectory($psrLogSource, $psrLogTarget, []);
+    echo "  Copied psr/log source -> psr-log/\n";
+} else {
+    echo "  WARNING: psr/log source not found at {$psrLogSource}\n";
+    echo "           Run composer install before wp-adapter-copy.\n";
+}
+
+echo "\nDone. lib/wp-adapter/ is ready.\n";
+
+function copyDirectory(string $source, string $target, array $exclude): void
+{
+    if (!is_dir($target)) {
+        mkdir($target, 0755, true);
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    foreach ($iterator as $item) {
+        $relative = substr($item->getPathname(), strlen($source) + 1);
+        $topLevel = explode(DIRECTORY_SEPARATOR, $relative)[0];
+
+        if (in_array($topLevel, $exclude, true)) {
+            continue;
+        }
+
+        $dest = $target . DIRECTORY_SEPARATOR . $relative;
+
+        if ($item->isDir()) {
+            if (!is_dir($dest)) {
+                mkdir($dest, 0755, true);
+            }
+        } else {
+            copy($item->getPathname(), $dest);
+        }
+    }
+}

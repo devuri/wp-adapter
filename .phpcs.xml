@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<ruleset name="AdapterKitCore">
+    <description>PSR-12 for WP Adapter package source.</description>
+    <file>src</file>
+    <arg name="extensions" value="php"/>
+    <rule ref="PSR12"/>
+</ruleset>
