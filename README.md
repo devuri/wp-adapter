@@ -388,11 +388,11 @@ The package is deliberately PHP 7.4 compatible throughout. `mixed` type hints, c
 
 ## Further reading
 
-- [docs/testing-guide.md](docs/testing-guide.md) — boundary rule, wrong-vs-right examples, PHPUnit setup, checklist
-- [docs/architecture.md](docs/architecture.md) — three-layer design, contract table, PSR adoption scope
-- [docs/direct-load.md](docs/direct-load.md) — full direct-load distribution workflow
-- [docs/compatibility.md](docs/compatibility.md) — PHP version matrix, forbidden syntax, PSR-3 pin rationale
-- [examples/plugin-wiring/](examples/plugin-wiring/) — complete example with service, plugin class, and unit tests
+- [docs/testing-guide.md](docs/testing-guide.md) boundary rule, wrong-vs-right examples, PHPUnit setup, checklist
+- [docs/architecture.md](docs/architecture.md) three-layer design, contract table, PSR adoption scope
+- [docs/direct-load.md](docs/direct-load.md) full direct-load distribution workflow
+- [docs/compatibility.md](docs/compatibility.md) PHP version matrix, forbidden syntax, PSR-3 pin rationale
+- [examples/plugin-wiring/](examples/plugin-wiring/) complete example with service, plugin class, and unit tests
 
 
 ## License
