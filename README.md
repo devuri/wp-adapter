@@ -68,7 +68,7 @@ Copy the source into our plugin at build time:
 vendor/bin/wp-adapter-copy
 ```
 
-This copies `src/` and `psr/log` into `lib/wp-adapter/` inside our plugin. Load it from our plugin's main file:
+This stages `src/` and `psr/log`, generates a `.build-id`, and atomically installs the complete bundle into `lib/wp-adapter/`. The command aborts before changing an existing bundle if `psr/log` is missing or the source and target overlap. Load it from our plugin's main file:
 
 ```php
 require_once __DIR__ . '/lib/wp-adapter/init.php';
@@ -357,21 +357,25 @@ vendor/bin/wp-adapter-copy
 # 4. Strip vendor/ before packaging. lib/ ships with the plugin.
 ```
 
-`wp-adapter-copy` copies `src/` and a PHP 7.4-safe copy of `psr/log` into `lib/wp-adapter/`. The `init.php` entry point registers two PSR-4 autoloaders — one for `AdapterKit\Core\` and one for `Psr\Log\` — so no Composer is needed on the end user's server.
+`wp-adapter-copy` stages `src/` and a PHP 7.4-safe copy of `psr/log`, generates a deterministic `.build-id`, and then atomically replaces `lib/wp-adapter/`. A failed preflight or staging copy leaves the existing bundle untouched. If the final install fails after the old bundle is moved, the command restores the previous copy.
 
-**Do not use a `class_exists` guard:**
+The generated `.build-id` must ship with the plugin. The `init.php` entry point reads it before registering the two PSR-4 autoloaders — one for `AdapterKit\Core\` and one for `Psr\Log\` — so no Composer runtime is needed on the end user's server.
+
+**Always load `init.php`; do not guard it with `class_exists`:**
 
 ```php
-// Wrong — silently accepts the first loaded version if multiple plugins use this package
+// Wrong — bypasses WP Adapter's build conflict check.
 if (! class_exists(AdapterKit\Core\Result::class)) {
     require_once __DIR__ . '/lib/wp-adapter/init.php';
 }
 
-// Correct — load unconditionally
+// Correct — identical builds are deduplicated by init.php.
 require_once __DIR__ . '/lib/wp-adapter/init.php';
 ```
 
-Namespace-per-plugin scoping is deferred to a future build step.
+The first loaded build registers the autoloaders. Loading another copy with the same build ID returns without registering duplicate loaders. Loading a different build throws a `RuntimeException` before its autoloaders are registered, preventing mixed-version execution. A missing or unreadable `.build-id` also fails immediately.
+
+This conflict guard is a fail-safe, not namespace isolation. It cannot make different WP Adapter builds coexist, detect an older unguarded copy, or resolve collisions with unrelated Composer packages. Namespace-per-plugin scoping is deferred to a future build step.
 
 
 ## Requirements
