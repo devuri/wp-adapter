@@ -6,19 +6,108 @@ WordPress contracts, production adapters, and ready-made testing adapters for cl
 composer require --dev devuri/wp-adapter
 ```
 
-[Quick start](#quick-start) | [Contracts](#contracts-and-implementations) | [Testing adapters](#testing-adapter-reference) | [Direct-load distribution](#direct-load-distribution) | [Advanced usage](#advanced-usage)
+[Quick start](#quick-start) | [How it works](#how-it-works) | [Contracts](#contracts-and-implementations) | [Testing adapters](#testing-adapter-reference) | [Direct-load distribution](#direct-load-distribution) | [Advanced usage](#advanced-usage)
 
-## At a glance
+## Quick start
 
-WP Adapter gives a plugin one stable boundary for common WordPress APIs.
+This is the shortest path from installation to a service that runs with WordPress in production and without WordPress in unit tests.
+
+### 1. Install for development
+
+```bash
+composer require --dev devuri/wp-adapter
+```
+
+Composer makes the contracts, production adapters, testing adapters, and `psr/log` available during development.
+
+### 2. Write plugin logic against a contract
+
+```php
+use AdapterKit\Core\Contracts\OptionStorageInterface;
+
+final class SettingsService
+{
+    private OptionStorageInterface $options;
+
+    public function __construct(OptionStorageInterface $options)
+    {
+        $this->options = $options;
+    }
+
+    public function enable(): void
+    {
+        $this->options->update(
+            'myplugin_settings',
+            ['enabled' => true]
+        );
+    }
+}
+```
+
+`myplugin_settings` is the WordPress option name. The array is simply the value this service chooses to store. `update()` accepts any value supported by WordPress options. See [Option storage contract](#option-storage-contract) for the full behavior.
+
+### 3. Use the WordPress adapter in production
+
+Create concrete adapters in the plugin bootstrap, then pass them into services:
+
+```php
+use AdapterKit\Core\Storage\WordPressOptionStorage;
+
+$settings = new SettingsService(new WordPressOptionStorage());
+```
+
+Pass `$settings` to the plugin class or controller that needs it. The service never calls `get_option()` or `update_option()` directly.
+
+### 4. Use the testing adapter in a unit test
+
+```php
+use AdapterKit\Core\Testing\InMemoryOptionStorage;
+use PHPUnit\Framework\TestCase;
+
+final class SettingsServiceTest extends TestCase
+{
+    public function test_enable_stores_the_setting(): void
+    {
+        $options = new InMemoryOptionStorage();
+        $settings = new SettingsService($options);
+
+        $settings->enable();
+
+        $this->assertSame(
+            ['enabled' => true],
+            $options->get('myplugin_settings')
+        );
+    }
+}
+```
+
+The same service runs without loading WordPress. The package supplies the testing adapter, so the test does not need a custom mock.
+
+### 5. Build a distributable plugin
+
+Run this from the plugin root:
+
+```bash
+vendor/bin/wp-adapter-copy
+```
+
+Load the copied bundle from the plugin's main file:
+
+```php
+require_once __DIR__ . '/lib/wp-adapter/init.php';
+```
+
+Ship `lib/wp-adapter/` in the plugin ZIP and remove `vendor/`. See [Direct-load distribution](#direct-load-distribution) for build safety and conflict handling.
+
+## How it works
+
+WP Adapter creates one boundary between plugin business logic and common WordPress APIs.
 
 | Layer | Main namespaces | Purpose |
 |---|---|---|
 | Contracts | `AdapterKit\Core\Contracts\` | Interfaces used by plugin business logic |
 | WordPress adapters | `Storage`, `Http`, `Hooks`, and `Environment` under `AdapterKit\Core\` | Production implementations that call WordPress |
 | Testing adapters | `AdapterKit\Core\Testing\`, plus `Time\FrozenClock` | Controlled implementations used in unit tests |
-
-All three layers are maintained as versioned package API. They are designed to be used together: contracts define the boundary, WordPress adapters provide production behavior, and testing adapters provide controlled behavior for unit tests. Supporting production implementations such as `SystemClock`, `NullLogger`, and `WordPressDebugLogger` live in their own `Time` and `Logging` namespaces.
 
 ```text
                          Plugin business logic
@@ -34,28 +123,77 @@ All three layers are maintained as versioned package API. They are designed to b
                     WordPress APIs
 ```
 
-The terms used throughout this README mean:
+A service depends only on a contract. The plugin bootstrap chooses the production implementation, while the unit test chooses the testing implementation. All three layers are maintained as versioned package API.
 
-- A **contract** is a PHP interface. It defines the methods plugin code may call.
-- A **production adapter** is a thin wrapper that forwards those calls to WordPress and returns the adapter contract's result.
-- A **testing adapter** is a concrete package class that holds controlled state, returns configured values, or records calls without loading WordPress.
-
-Code examples show one valid use, not the only accepted type or value. For example, an option example may store an array because that service needs several fields, while the option contract itself accepts any WordPress-compatible value. Non-scalar values must be serializable. The contract sections below state the actual argument and return behavior.
-
-The same service class runs in both environments. Production receives classes such as `WordPressOptionStorage` and `WordPressHttpClient`. Unit tests receive classes such as `InMemoryOptionStorage`, `MockHttpClient`, and `RecordingLogger`. The service depends only on the interfaces.
-
-The testing adapters are designed for service-level tests. No custom mocks and no WordPress bootstrap are needed for those tests. The adapters are not a byte-for-byte reimplementation of every WordPress edge case. Use integration tests when exact WordPress storage, sanitization, hook, cache, or HTTP behavior is the subject of the test.
-
-| What you are testing | Use |
-|---|---|
-| Business rules and service behavior | Package testing adapters, without WordPress |
-| Exact behavior of a WordPress function or runtime | Integration tests with WordPress loaded |
+The production adapters are intentionally thin wrappers around WordPress. The testing adapters provide controlled state, configured responses, and recorded calls for service-level tests. They are not intended to reproduce every WordPress runtime edge case. Use integration tests when exact WordPress behavior is what the test needs to prove.
 
 ## What this solves
 
 WordPress plugins often call `get_option()`, `add_action()`, and `wp_remote_post()` directly inside business logic. That couples the logic to a running WordPress installation and makes isolated tests difficult.
 
-WP Adapter keeps WordPress at the edge. Services receive small interfaces through their constructors and remain plain PHP.
+WP Adapter keeps WordPress at the edge. Services receive small interfaces through their constructors and remain plain PHP. In production they receive WordPress adapters. In unit tests they receive the supplied testing adapters. No custom mocks and no WordPress bootstrap are needed for those service tests.
+
+## The boundary rule
+
+WordPress function calls belong only in the production adapter classes and the plugin bootstrap edge.
+
+Business logic must call contracts instead of calling WordPress directly:
+
+```php
+// Wrong: the service now requires WordPress.
+$value = get_option('myplugin_settings', []);
+
+// Right: the service depends on a contract.
+$value = $this->options->get('myplugin_settings', []);
+```
+
+The package cannot isolate a service that still calls `get_option()`, `wp_remote_post()`, `add_action()`, or another WordPress function internally.
+
+`PluginContext::fromPluginFile()` is the documented bootstrap-edge exception. It calls WordPress path helpers to construct immutable plugin metadata. Use `PluginContext::fromValues()` when WordPress is not loaded.
+
+A useful boundary check is simple: instantiate the service from a plain PHP process that loads only Composer. If that triggers a missing WordPress function, WordPress has leaked past the edge.
+
+See [docs/testing-guide.md](docs/testing-guide.md) for a complete wrong-versus-right example and checklist.
+
+## Production wiring
+
+A real plugin usually creates several adapters in one bootstrap location and passes them into the main plugin object:
+
+```php
+use AdapterKit\Core\Http\WordPressHttpClient;
+use AdapterKit\Core\Hooks\WordPressHooks;
+use AdapterKit\Core\Logging\NullLogger;
+use AdapterKit\Core\PluginContext;
+use AdapterKit\Core\Storage\WordPressOptionStorage;
+use AdapterKit\Core\Storage\WordPressTransientStorage;
+
+$context = PluginContext::fromPluginFile(
+    __FILE__,
+    'my-plugin',
+    '1.0.0',
+    'my-plugin',
+    'myplugin_'
+);
+
+$plugin = new MyPlugin\Plugin(
+    $context,
+    new WordPressHooks(),
+    new WordPressOptionStorage(),
+    new WordPressTransientStorage(),
+    new WordPressHttpClient(),
+    new NullLogger()
+);
+
+$plugin->register();
+```
+
+Run this from the main plugin file, or pass the main plugin file path explicitly. `PluginContext::fromPluginFile()` uses that path to calculate the plugin basename, directory path, and directory URL.
+
+This bootstrap is the composition root: the place that selects concrete implementations and passes them into the plugin. Business logic should continue to type-hint contracts, not these concrete classes.
+
+## Complete service example
+
+The following service combines option storage, HTTP, logging, and `Result` while remaining independent of WordPress:
 
 ```php
 use AdapterKit\Core\Contracts\HttpClientInterface;
@@ -122,162 +260,13 @@ final class LicenseService
 }
 ```
 
-The HTTP adapter always returns a normalized array with `is_error`, `error_message`, `code`, and `body`. The `body` value is a string, so JSON is decoded by the service. `is_error` represents a WordPress transport error. An HTTP response such as 400 or 500 still has `is_error === false`, so the status code must be checked separately.
+The HTTP contract returns a normalized array with `is_error`, `error_message`, `code`, and `body`. The body is a string, so the service decodes JSON itself. A 400 or 500 response is not a transport error, which is why the example checks the status code separately.
 
-The option call stores an array because this example has two related fields. `OptionStorageInterface::update()` does not require an array. Its value argument may be a string, number, boolean, array, object, or another value that WordPress can store. There are no WordPress function calls in this service. Production and tests choose different implementations of the same contracts.
-
-## Quick start
-
-### 1. Install for development
-
-```bash
-composer require --dev devuri/wp-adapter
-```
-
-Composer provides the contracts, WordPress adapters, testing adapters, and `psr/log` during development.
-
-### 2. Depend on contracts in plugin code
-
-```php
-use AdapterKit\Core\Contracts\OptionStorageInterface;
-
-final class SettingsService
-{
-    private OptionStorageInterface $options;
-
-    public function __construct(OptionStorageInterface $options)
-    {
-        $this->options = $options;
-    }
-
-    public function enable(): void
-    {
-        $this->options->update(
-            'myplugin_settings',
-            ['enabled' => true]
-        );
-    }
-}
-```
-
-The first argument is the WordPress option name. The second argument is the value to store. It is an array here because the settings record may contain several fields, not because the adapter requires arrays. The optional third argument is passed to `update_option()`: `true` requests autoloading, `false` requests no autoloading, and `null` keeps the option's initial setting or lets WordPress choose its default for a new option. WordPress can only change an existing option's autoload setting when its value also changes.
-
-This method intentionally does not treat the boolean returned by `update()` as a simple success-or-error flag. WordPress can return `false` when the stored value did not change as well as when an update failed. Check the return value only when that distinction is meaningful to the service.
-
-Do not type-hint `WordPressOptionStorage` inside the service. Type-hint `OptionStorageInterface` so the implementation can change by environment.
-
-### 3. Wire production adapters at the plugin edge
-
-```php
-use AdapterKit\Core\Http\WordPressHttpClient;
-use AdapterKit\Core\Hooks\WordPressHooks;
-use AdapterKit\Core\Logging\NullLogger;
-use AdapterKit\Core\PluginContext;
-use AdapterKit\Core\Storage\WordPressOptionStorage;
-use AdapterKit\Core\Storage\WordPressTransientStorage;
-
-$context = PluginContext::fromPluginFile(
-    __FILE__,
-    'my-plugin',
-    '1.0.0',
-    'my-plugin',
-    'myplugin_'
-);
-
-$plugin = new MyPlugin\Plugin(
-    $context,
-    new WordPressHooks(),
-    new WordPressOptionStorage(),
-    new WordPressTransientStorage(),
-    new WordPressHttpClient(),
-    new NullLogger()
-);
-
-$plugin->register();
-```
-
-Run this from the main plugin file, or pass the main plugin file path explicitly. `PluginContext::fromPluginFile()` uses that path to calculate the plugin basename, directory path, and directory URL.
-
-This bootstrap is the composition root, meaning the one place that selects concrete implementations and passes them into the plugin.
-
-### 4. Test the same logic without WordPress
-
-```php
-use AdapterKit\Core\Testing\InMemoryOptionStorage;
-use AdapterKit\Core\Testing\MockHttpClient;
-use AdapterKit\Core\Testing\RecordingLogger;
-use PHPUnit\Framework\TestCase;
-
-final class LicenseServiceTest extends TestCase
-{
-    public function test_activation_stores_the_license(): void
-    {
-        $options = new InMemoryOptionStorage();
-        $http = new MockHttpClient();
-        $logger = new RecordingLogger();
-
-        $http->addJsonResponse('/activate', ['ok' => true], 200);
-
-        $service = new LicenseService(
-            $options,
-            $http,
-            $logger,
-            'myplugin_license'
-        );
-
-        $result = $service->activate('VALID-KEY-123');
-
-        $this->assertTrue($result->isSuccess());
-        $this->assertSame(
-            ['active' => true, 'key' => 'VALID-KEY-123'],
-            $options->get('myplugin_license')
-        );
-        $this->assertTrue($http->wasRequestMadeTo('/activate'));
-    }
-}
-```
-
-`addJsonResponse()` accepts an array for convenience, encodes it as JSON, and places that JSON string in the returned `body`. This mirrors the production adapter's string body shape. URL fragments are matched against the requested URL, and an unconfigured request returns a normalized error response.
-
-WordPress is not loaded. The package-provided testing adapters hold state, return controlled responses, and record interactions.
-
-### 5. Build the distributable plugin
-
-```bash
-vendor/bin/wp-adapter-copy
-```
-
-Then load the copied bundle from the plugin's main file:
-
-```php
-require_once __DIR__ . '/lib/wp-adapter/init.php';
-```
-
-Strip `vendor/` before packaging the plugin. The generated `lib/wp-adapter/` directory ships in the plugin ZIP.
-
-## The boundary rule
-
-WordPress function calls belong only in the production adapter classes and the plugin bootstrap edge.
-
-Business logic must call contracts instead of calling WordPress directly:
-
-```php
-// Wrong: the service now requires WordPress.
-$value = get_option('myplugin_settings', []);
-
-// Right: the service depends on a contract.
-$value = $this->options->get('myplugin_settings', []);
-```
-
-The package cannot isolate a service that still calls `get_option()`, `wp_remote_post()`, `add_action()`, or another WordPress function internally.
-
-`PluginContext::fromPluginFile()` is the documented bootstrap-edge exception. It calls WordPress path helpers to construct immutable plugin metadata. Use `PluginContext::fromValues()` when WordPress is not loaded.
-
-A useful boundary check is simple: instantiate the service from a plain PHP process that loads only Composer. If that triggers a missing WordPress function, WordPress has leaked past the edge.
-
-See [docs/testing-guide.md](docs/testing-guide.md) for a complete wrong-versus-right example and checklist.
+The option value is an array because this service stores two related fields. The storage contract does not require arrays. See the contract reference below for accepted values and WordPress return semantics.
 
 ## Contracts and implementations
+
+The examples in this section show valid uses, not the only accepted values. For example, an option may be an array, string, number, boolean, object, or another value WordPress can store. Each subsection describes the actual contract and any important differences between the production and testing implementations.
 
 Plugin services depend on six package-owned contracts plus PSR-3 logging.
 
