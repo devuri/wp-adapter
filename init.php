@@ -16,6 +16,35 @@
 
 declare(strict_types=1);
 
+$buildIdFile = __DIR__ . '/.build-id';
+$buildId = is_file($buildIdFile) ? trim((string) file_get_contents($buildIdFile)) : '';
+$registryKey = '__devuri_wp_adapter_build';
+
+if ($buildId === '') {
+    throw new RuntimeException('WP Adapter build ID is missing or unreadable: ' . $buildIdFile);
+}
+
+if (isset($GLOBALS[$registryKey])) {
+    $loaded = $GLOBALS[$registryKey];
+
+    if ($loaded['id'] !== $buildId) {
+        throw new RuntimeException(sprintf(
+            'Conflicting WP Adapter builds detected: %s at %s; %s at %s.',
+            $loaded['id'],
+            $loaded['path'],
+            $buildId,
+            __DIR__
+        ));
+    }
+
+    return;
+}
+
+$GLOBALS[$registryKey] = [
+    'id' => $buildId,
+    'path' => __DIR__,
+];
+
 spl_autoload_register(static function (string $class): void {
     $base = __DIR__ . '/src/';
     $prefix = 'AdapterKit\\Core\\';
