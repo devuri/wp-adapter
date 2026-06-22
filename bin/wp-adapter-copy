@@ -76,7 +76,7 @@ function warn(string $message, string $hint = ''): void
     }
 }
 
-function abort(string $message, int $code = 1): never
+function abort(string $message, int $code = 1): void
 {
     blank();
     line('  ' . Ansi::err('✖  ERROR') . '  ' . $message);
@@ -85,6 +85,40 @@ function abort(string $message, int $code = 1): never
 }
 
 // ── Core ──────────────────────────────────────────────────────────────────────
+
+function removeDirectory(string $path): void
+{
+    if (is_link($path) || is_file($path)) {
+        if (!unlink($path)) {
+            abort("Could not remove path: {$path}");
+        }
+        return;
+    }
+
+    if (!is_dir($path)) {
+        return;
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+
+    foreach ($iterator as $item) {
+        $itemPath = $item->getPathname();
+        $removed = $item->isLink() || $item->isFile()
+            ? unlink($itemPath)
+            : rmdir($itemPath);
+
+        if (!$removed) {
+            abort("Could not remove path: {$itemPath}");
+        }
+    }
+
+    if (!rmdir($path)) {
+        abort("Could not remove directory: {$path}");
+    }
+}
 
 /**
  * @param  list<string>  $exclude  Top-level names to skip.
@@ -146,7 +180,12 @@ if (!stream_isatty(STDOUT) || in_array('--no-color', $argv ?? [], true)) {
 
 $packageRoot = dirname(__DIR__);
 $pluginRoot  = getcwd();
-$target      = $pluginRoot . '/lib/wp-adapter';
+
+if ($pluginRoot === false) {
+    abort('Could not resolve the plugin project root.');
+}
+
+$target = $pluginRoot . '/lib/wp-adapter';
 
 $exclude = [
     'tests',
@@ -194,6 +233,11 @@ if (!is_dir($packageRoot)) {
 // ── Main copy ─────────────────────────────────────────────────────────────────
 
 $start = microtime(true);
+
+if (file_exists($target) || is_link($target)) {
+    step(Ansi::cyan('→'), 'Removing previous wp-adapter copy …');
+    removeDirectory($target);
+}
 
 step(Ansi::cyan('→'), 'Copying wp-adapter source …');
 $mainStats = copyDirectory($packageRoot, $target, $exclude);
