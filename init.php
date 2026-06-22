@@ -23,8 +23,12 @@ spl_autoload_register(static function (string $class): void {
 
     if (strncmp($prefix, $class, $len) === 0) {
         $relative = substr($class, $len);
+        if ($relative === '' || preg_match('/\A[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\z/D', $relative) !== 1) {
+            return;
+        }
+
         $file = $base . str_replace('\\', DIRECTORY_SEPARATOR, $relative) . '.php';
-        if (file_exists($file)) {
+        if (is_file($file)) {
             require $file;
         }
     }
@@ -37,8 +41,12 @@ spl_autoload_register(static function (string $class): void {
 
     if (strncmp($prefix, $class, $len) === 0) {
         $relative = substr($class, $len);
+        if ($relative === '' || preg_match('/\A[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\z/D', $relative) !== 1) {
+            return;
+        }
+
         $file = $base . str_replace('\\', DIRECTORY_SEPARATOR, $relative) . '.php';
-        if (file_exists($file)) {
+        if (is_file($file)) {
             require $file;
         }
     }
